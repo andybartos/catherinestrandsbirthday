@@ -1,0 +1,377 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NYT Strands Game</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        #gameContainer {
+            text-align: center;
+            position: relative;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+        }
+        .grid {
+            display: inline-grid;
+            grid-template-columns: repeat(6, 50px);
+            gap: 5px;
+        }
+        .node {
+            width: 50px;
+            height: 50px;
+            background-color: #d3d3d3;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            z-index: 1;
+            touch-action: manipulation;
+        }
+        .node.selected {
+            background-color: #ffa500;
+        }
+        .node.completed {
+            background-color: #87ceeb;
+        }
+        .node.completed-office {
+            background-color: #ffff00;
+        }
+        .line {
+            position: absolute;
+            background-color: #ffa500;
+            height: 4px;
+            transform-origin: 0 0;
+            z-index: 0;
+        }
+        .line.completed {
+            background-color: #87ceeb;
+        }
+        .line.completed-office {
+            background-color: #ffff00;
+        }
+        #message {
+            margin-top: 15px;
+            font-size: 18px;
+            color: #333;
+        }
+        h1 {
+            font-size: 28px;
+            color: #333;
+            margin: 0;
+            padding: 5px;
+        }
+        h2 {
+            font-size: 20px;
+            color: #666;
+            margin: 0;
+            padding: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <h1>Happy Birthday Catherine</h1>
+        <h2>Clue: The Dragons Den</h2>
+        <div id="grid" class="grid"></div>
+        <div id="message"></div>
+    </div>
+
+    <script>
+        const grid = [
+            'T', 'N', 'R', 'P', 'K', 'S',
+            'E', 'I', 'P', 'E', 'R', 'E',
+            'R', 'A', 'A', 'H', 'C', 'D',
+            'P', 'I', 'R', 'P', 'E', 'N',
+            'P', 'K', 'S', 'E', 'C', 'E',
+            'O', 'T', 'D', 'I', 'M', 'O',
+            'O', 'F', 'F', 'R', 'U', 'S',
+            'R', 'E', 'K', 'A', 'M', 'E'
+        ];
+        let selectedNodes = [];
+        const lines = [];
+        const completedWords = [];
+
+        const validWords = {
+            'DESK': [18, 12, 6, 5],
+            'PRINTER': [4, 3, 8, 2, 1, 7, 13],
+            'PAPER': [19, 14, 9, 10, 11],
+            'CHAIR': [17, 16, 15, 20, 21],
+            'PEN': [22, 23, 24],
+            'DESKTOP': [33, 28, 27, 26, 32, 31, 25],
+            'OFFICE': [37, 38, 39, 34, 29, 30],
+            'MOUSE': [35, 36, 41, 42, 48],
+            'MARKER': [47, 46, 40, 45, 44, 43]
+        };
+
+        function createGrid() {
+            const gridDiv = document.getElementById('grid');
+            grid.forEach((letter, index) => {
+                const node = document.createElement('div');
+                node.className = 'node';
+                node.textContent = letter;
+                node.dataset.index = index + 1;
+                node.addEventListener('mousedown', startSelection);
+                node.addEventListener('mouseover', continueSelection);
+                node.addEventListener('mouseup', endSelection);
+                node.addEventListener('touchstart', startSelection, { passive: true });
+                node.addEventListener('touchmove', continueSelection, { passive: true });
+                node.addEventListener('touchend', endSelection, { passive: true });
+                gridDiv.appendChild(node);
+            });
+        }
+
+        function startSelection(event) {
+            event.preventDefault();
+            const index = parseInt(event.target.dataset.index) - 1;
+            if (!completedWords.flat().includes(index)) {
+                selectedNodes = [index];
+                event.target.classList.add('selected');
+                document.addEventListener('mousemove', continueSelection);
+                document.addEventListener('touchmove', continueSelection, { passive: true });
+            }
+        }
+
+        function continueSelection(event) {
+            event.preventDefault();
+            if (!selectedNodes.length) return;
+            const target = event.target.closest('.node');
+            if (!target) return;
+
+            const index = parseInt(target.dataset.index) - 1;
+            if (completedWords.flat().includes(index)) return;
+
+            const lastIndex = selectedNodes[selectedNodes.length - 1];
+            if (selectedNodes.includes(index)) {
+                if (index === selectedNodes[selectedNodes.length - 2]) {
+                    selectedNodes.pop();
+                    const removedNode = document.querySelector(`.node[data-index="${lastIndex + 1}"]`);
+                    removedNode.classList.remove('selected');
+                    redrawLines();
+                }
+                return;
+            }
+
+            if (isAdjacent(lastIndex, index)) {
+                selectedNodes.push(index);
+                target.classList.add('selected');
+                redrawLines();
+            }
+        }
+
+        function endSelection(event) {
+            event.preventDefault();
+            document.removeEventListener('mousemove', continueSelection);
+            document.removeEventListener('touchmove', continueSelection);
+            checkWord();
+        }
+
+        function isAdjacent(index1, index2) {
+            const row1 = Math.floor(index1 / 6);
+            const col1 = index1 % 6;
+            const row2 = Math.floor(index2 / 6);
+            const col2 = index2 % 6;
+            return Math.abs(row1 - row2) <= 1 && Math.abs(col1 - col2) <= 1 && !(row1 < 0 || row1 >= 8 || col1 < 0 || col1 >= 6 || row2 < 0 || row2 >= 8 || col2 < 0 || col2 >= 6);
+        }
+
+        function redrawLines() {
+            lines.forEach(line => line.remove());
+            lines.length = 0;
+
+            for (let i = 0; i < selectedNodes.length - 1; i++) {
+                const startNode = document.querySelector(`.node[data-index="${selectedNodes[i] + 1}"]`);
+                const endNode = document.querySelector(`.node[data-index="${selectedNodes[i + 1] + 1}"]`);
+                const line = createLine(startNode, endNode, false);
+                document.getElementById('gameContainer').appendChild(line);
+                lines.push(line);
+            }
+
+            completedWords.forEach(wordIndices => {
+                const wordKey = Object.keys(validWords).find(key => arraysEqual(validWords[key], wordIndices.map(idx => idx)));
+                const isOffice = wordKey === 'OFFICE';
+                for (let i = 0; i < wordIndices.length - 1; i++) {
+                    const startNode = document.querySelector(`.node[data-index="${wordIndices[i] + 1}"]`);
+                    const endNode = document.querySelector(`.node[data-index="${wordIndices[i + 1] + 1}"]`);
+                    const line = createLine(startNode, endNode, true, isOffice);
+                    document.getElementById('gameContainer').appendChild(line);
+                }
+            });
+        }
+
+        function createLine(startNode, endNode, isCompleted, isOffice) {
+            const line = document.createElement('div');
+            line.className = 'line';
+            if (isCompleted) {
+                line.classList.add('completed');
+                if (isOffice) line.classList.add('completed-office');
+            }
+            const startRect = startNode.getBoundingClientRect();
+            const endRect = endNode.getBoundingClientRect();
+            const containerRect = document.getElementById('gameContainer').getBoundingClientRect();
+            const startX = startRect.left + startRect.width / 2 - containerRect.left;
+            const startY = startRect.top + startRect.height / 2 - containerRect.top;
+            const endX = endRect.left + endRect.width / 2 - containerRect.left;
+            const endY = endRect.top + endRect.height / 2 - containerRect.top;
+            const length = Math.sqrt((endX - startX) ** 2 + (endY - startY) ** 2);
+            const angle = Math.atan2(endY - startY, endX - startX) * 180 / Math.PI;
+            line.style.width = `${length}px`;
+            line.style.left = `${startX}px`;
+            line.style.top = `${startY}px`;
+            line.style.transform = `rotate(${angle}deg)`;
+            return line;
+        }
+
+        function checkWord() {
+            const wordIndices = [...selectedNodes].map(idx => idx);
+            let found = false;
+            for (let wordKey in validWords) {
+                if (arraysEqual(wordIndices, validWords[wordKey].map(idx => idx - 1))) {
+                    document.getElementById('message').textContent = `Found: ${wordKey}!`;
+                    wordIndices.forEach(index => {
+                        const node = document.querySelector(`.node[data-index="${index + 1}"]`);
+                        node.classList.remove('selected');
+                        if (wordKey === 'OFFICE') {
+                            node.classList.add('completed-office');
+                        } else {
+                            node.classList.add('completed');
+                        }
+                    });
+                    completedWords.push(wordIndices);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                document.getElementById('message').textContent = 'Invalid word. Try again!';
+                selectedNodes.forEach(index => {
+                    const node = document.querySelector(`.node[data-index="${index + 1}"]`);
+                    node.classList.remove('selected');
+                });
+            }
+            selectedNodes = [];
+            lines.forEach(line => line.remove());
+            lines.length = 0;
+            redrawLines();
+
+            if (completedWords.length === Object.keys(validWords).length) {
+                document.getElementById('message').textContent = 'Congratulations! You found all words!';
+            }
+        }
+
+        function arraysEqual(arr1, arr2) {
+            if (arr1.length !== arr2.length) return false;
+            for (let i = 0; i < arr1.length; i++) {
+                if (arr1[i] !== arr2[i]) return false;
+            }
+            return true;
+        }
+
+        createGrid();
+    </script>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  let selected = [];
+  let isTouching = false;
+
+  function isAdjacent(a, b) {
+    if (!a || !b) return false;
+    const r1 = parseInt(a.dataset.row), c1 = parseInt(a.dataset.col);
+    const r2 = parseInt(b.dataset.row), c2 = parseInt(b.dataset.col);
+    return Math.abs(r1 - r2) <= 1 && Math.abs(c1 - c2) <= 1;
+  }
+
+  function clearSelection() {
+    selected.forEach(node => node.classList.remove("selected"));
+    selected = [];
+  }
+
+  function selectNode(node) {
+    node.classList.add("selected");
+    selected.push(node);
+  }
+
+  document.querySelectorAll(".node").forEach(node => {
+    node.addEventListener("touchstart", e => {
+      e.preventDefault();
+      clearSelection();
+      isTouching = true;
+      selectNode(node);
+    });
+  });
+
+  document.addEventListener("touchmove", e => {
+    if (!isTouching) return;
+    const touch = e.touches[0];
+    const target = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (target && target.classList.contains("node")) {
+      const last = selected[selected.length - 1];
+      if (!selected.includes(target) && isAdjacent(last, target)) {
+        selectNode(target);
+      }
+    }
+  }, { passive: false });
+
+  document.addEventListener("touchend", () => {
+    isTouching = false;
+    // Optionally process word check here
+  });
+});
+</script>
+
+</body>
+</html>
