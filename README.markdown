@@ -1,12 +1,11 @@
 # Happy Birthday Catherine - NYT Strands Game
 
-This is a custom NYT Strands-style word puzzle game created as a birthday surprise for Catherine. The game features a grid where players can connect adjacent letters (including diagonally) to form words, with a backdrop featuring a memorable photo.
+This is a custom NYT Strands-style word puzzle game created as a birthday surprise for Catherine. The game features a grid where players can connect adjacent letters (including diagonally) to form words.
 
 ## Features
 - Mobile-friendly design, optimized for Google Pixel.
 - Interactive word puzzle with predefined words to find.
-- Custom background image and themed title/subtitle.
-- Visual feedback for selected and completed words.
+- Themed title and subtitle.
 
 ## How to Play
 1. Click and drag (or touch and move) between adjacent letters to form words.
@@ -27,7 +26,6 @@ This is a custom NYT Strands-style word puzzle game created as a birthday surpri
    git clone https://github.com/your-username/happy-birthday-catherine.git
    cd happy-birthday-catherine
    ```
-2. Replace the background image URL in `index.html` with the actual hosted image URL (e.g., from Imgur).
 
 ### Deployment on Vercel
 1. Install the Vercel CLI:
@@ -46,7 +44,6 @@ This is a custom NYT Strands-style word puzzle game created as a birthday surpri
 
 ## Credits
 - Created with love for Catherine's birthday.
-- Background image courtesy of a special moment in Sydney.
 
 ## License
 This project is for personal use only.
